@@ -1,0 +1,15 @@
+# Dashboard dependencies for Streamlit Cloud.
+#
+# Pinned deliberately: without versions every redeploy pulled fresh major
+# releases, and the dashboard could break on its own with no commit behind it.
+#
+# !! The Python version is set in the Streamlit Cloud UI (App settings ->
+# General), NOT by a runtime.txt file - that file used to say 3.11 while the
+# app actually ran 3.14, which is the kind of mismatch nobody notices until a
+# pin breaks. These pins are chosen to install on 3.11 through 3.14, so the
+# dashboard survives whichever version the UI is set to.
+streamlit==1.59.1
+supabase==2.31.0
+pandas==3.0.3
+plotly==6.9.0
+numpy==2.4.6
