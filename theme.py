@@ -148,6 +148,37 @@ def status_banner(icon: str, text: str, color: str, p: Palette) -> None:
     )
 
 
+def goal_bar(progress: dict, line: Optional[str], p: Palette) -> None:
+    """План и факт одной полосой.
+
+    Цвет берётся по темпу, а не по факту: в полдень выполненные 40% плана —
+    это опережение, а не отставание, и красная полоса здесь сообщала бы
+    тревогу там, где всё идёт как надо.
+    """
+    share = min(max(progress["share"], 0), 1.0)
+    color = p.good if progress["on_track"] else p.warning
+    if progress["pace"] < 0.75:
+        color = p.critical
+
+    st.markdown(
+        f'<div style="margin:4px 0 18px">'
+        f'<div style="display:flex;justify-content:space-between;align-items:baseline;'
+        f'margin-bottom:6px">'
+        f'<span style="color:{p.text_secondary};font-size:13px">План на период</span>'
+        f'<span style="color:{p.text_primary};font-weight:600;font-size:14px;'
+        f'font-variant-numeric:tabular-nums">{progress["actual"]} / {progress["target"]}</span>'
+        f'</div>'
+        f'<div style="height:8px;border-radius:4px;background:{p.rgba(p.text_secondary, 0.15)};'
+        f'overflow:hidden">'
+        f'<div style="height:100%;width:{share * 100:.1f}%;background:{color};'
+        f'border-radius:4px"></div></div>'
+        + (f'<div style="color:{p.text_secondary};font-size:12.5px;margin-top:6px">'
+           f'{escape(line)}</div>' if line else "")
+        + '</div>',
+        unsafe_allow_html=True,
+    )
+
+
 def hero_metric(label: str, value: str, p: Palette, delta: Optional[str] = None,
                 delta_positive: bool = True, hint: Optional[str] = None) -> None:
     """Главная цифра страницы — визуально тяжелее остальных карточек.

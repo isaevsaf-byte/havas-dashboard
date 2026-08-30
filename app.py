@@ -217,12 +217,10 @@ period_label = {
 identified_mask = (
     is_identified(df_period["visitor_id"]) if not df_period.empty else pd.Series(dtype=bool)
 )
-theme.summary_block(
-    insights.build_summary(
-        df_period, df_prev, identified_mask, period_label, now_local, range(8, 24)
-    ),
-    palette,
+summary_facts = insights.build_summary(
+    df_period, df_prev, identified_mask, period_label, now_local, range(8, 24)
 )
+theme.summary_block(summary_facts, palette)
 
 # --- KPI -------------------------------------------------------------------
 total_in = len(df_in)
@@ -269,6 +267,30 @@ with side_col:
             "Опознано проходов", f"{identified_share:.0f}%", palette,
             hint=f"{unknown_count} без личности" if unknown_count else "все проходы с личностью",
         )
+
+# --- План и факт -----------------------------------------------------------
+# Цель задаётся секретом DAILY_GOAL и пересчитывается на выбранный период:
+# держать её в коде значило бы править дашборд ради каждой новой цифры.
+# Для незавершённого дня судим по темпу, а не по факту — иначе утром любой
+# план выглядит проваленным.
+period_days = max((period_end - period_start).total_seconds() / 86400, 0.01)
+elapsed_share = 1.0
+if period_choice == "Сегодня":
+    day_start, day_end = day_bounds(today_local)
+    elapsed_share = min(
+        max((datetime.now(TASHKENT_TZ) - day_start).total_seconds()
+            / (day_end - day_start).total_seconds(), 0.01), 1.0,
+    )
+
+try:
+    daily_goal = int(secret("DAILY_GOAL", "0") or 0)
+except ValueError:
+    daily_goal = 0
+goal = insights.goal_progress(total_in, daily_goal, period_days, elapsed_share)
+goal_line = insights.describe_goal(goal, period_choice.lower())
+
+if goal:
+    theme.goal_bar(goal, goal_line, palette)
 
 # --- Сводка по сети --------------------------------------------------------
 # Показывается только когда магазинов больше одного: на пилоте из одной точки
@@ -624,6 +646,43 @@ if not df_period.empty:
     st.download_button(
         "Скачать CSV за период", data=csv_bytes,
         file_name=f"havas_{store}_{period_choice}.csv", mime="text/csv", key="csv_download",
+    )
+
+# --- Отчёт для отправки ----------------------------------------------------
+# HTML, а не PDF: страница открывается на любом устройстве и печатается в PDF
+# средствами браузера. Генерировать PDF здесь значит тянуть ещё одну
+# библиотеку в облачную сборку ради формата, который браузер и так умеет.
+st.divider()
+report_col, hint_col = st.columns([1, 3])
+with report_col:
+    hourly_rows = []
+    if not df_in.empty and hourly_mode:
+        counts = df_in.groupby(df_in["timestamp"].dt.hour).size()
+        hourly_rows = [(f"{hour:02d}:00", int(count)) for hour, count in counts.items()]
+
+    report_html = insights.build_report(
+        store=store,
+        period_label=period_choice,
+        generated_at=datetime.now(TASHKENT_TZ),
+        kpis=[
+            ("Входов", total_in),
+            ("Новые", f"{new_count} ({new_pct:.0f}%)"),
+            ("Повторные", f"{repeat_count} ({repeat_pct:.0f}%)"),
+            ("Опознано проходов", f"{identified_share:.0f}%"),
+        ],
+        summary=summary_facts,
+        hourly=hourly_rows,
+        goal_line=goal_line,
+    )
+    st.download_button(
+        "Скачать отчёт", report_html,
+        file_name=f"havas_{store}_{datetime.now(TASHKENT_TZ):%Y%m%d}.html",
+        mime="text/html", use_container_width=True,
+    )
+with hint_col:
+    st.caption(
+        "Одна страница с показателями за период и главными выводами. "
+        "Открывается в браузере; чтобы получить PDF — «Печать» → «Сохранить как PDF»."
     )
 
 # --- Автообновление --------------------------------------------------------

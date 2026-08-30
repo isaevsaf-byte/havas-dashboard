@@ -161,3 +161,118 @@ def build_summary(
         quiet_period(df_now, work_hours, now),
     ]
     return [fact for fact in facts if fact]
+
+
+def goal_progress(actual: int, daily_goal: int, period_days: float,
+                  elapsed_share: float = 1.0) -> Optional[dict]:
+    """План/факт по посещаемости. None, когда цель не задана.
+
+    Цель задаётся на день, а периоды бывают разной длины, поэтому она
+    пересчитывается на выбранный отрезок. Для незавершённого периода
+    (`elapsed_share` < 1) отдельно считается темп: «отстаём» на середине дня
+    и «отстаём» вечером — разные новости, и путать их нельзя.
+    """
+    if not daily_goal or daily_goal <= 0 or period_days <= 0:
+        return None
+    target = daily_goal * period_days
+    share = actual / target if target else 0
+    result = {
+        "target": int(round(target)),
+        "actual": actual,
+        "share": share,
+        "gap": int(round(target - actual)),
+    }
+    if 0 < elapsed_share < 1:
+        expected_by_now = target * elapsed_share
+        result["on_track"] = actual >= expected_by_now
+        result["pace"] = actual / expected_by_now if expected_by_now else 0
+        result["projected"] = int(round(actual / elapsed_share))
+    else:
+        result["on_track"] = actual >= target
+        result["pace"] = share
+        result["projected"] = actual
+    return result
+
+
+def describe_goal(progress: Optional[dict], period_label: str) -> Optional[str]:
+    """Фраза о выполнении плана — то, что уходит в отчёт руководству."""
+    if not progress:
+        return None
+    if progress["projected"] != progress["actual"]:
+        # Период не закончился: судить надо по темпу, а не по факту.
+        verdict = "идём с опережением" if progress["on_track"] else "отстаём от плана"
+        return (f"План {progress['target']} за {period_label}: {verdict}, "
+                f"сейчас {progress['actual']}, к концу ожидается ~{progress['projected']}.")
+    if progress["gap"] <= 0:
+        return (f"План {progress['target']} за {period_label} выполнен: "
+                f"{progress['actual']} ({progress['share'] * 100:.0f}%).")
+    return (f"План {progress['target']} за {period_label} не выполнен: "
+            f"{progress['actual']} ({progress['share'] * 100:.0f}%), "
+            f"не хватило {progress['gap']}.")
+
+
+REPORT_STYLE = """
+body{font:15px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+color:#16181d;background:#fff;margin:0;padding:40px;max-width:820px}
+h1{font-size:26px;margin:0 0 4px}h2{font-size:17px;margin:32px 0 12px;
+padding-bottom:6px;border-bottom:1px solid #e6e8ec}
+.sub{color:#6b7280;margin-bottom:28px}
+.kpis{display:flex;gap:14px;flex-wrap:wrap;margin:0 0 8px}
+.kpi{flex:1;min-width:150px;border:1px solid #e6e8ec;border-radius:10px;padding:14px 16px}
+.kpi .v{font-size:26px;font-weight:600;letter-spacing:-.02em}
+.kpi .k{color:#6b7280;font-size:13px;margin-top:2px}
+ul{padding-left:18px}li{margin:6px 0}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid #eef0f3}
+th{color:#6b7280;font-weight:500}
+td.n{text-align:right;font-variant-numeric:tabular-nums}
+.foot{margin-top:36px;color:#9aa1ab;font-size:12px}
+@media print{body{padding:0}}
+"""
+
+
+def build_report(store: str, period_label: str, generated_at: datetime,
+                 kpis: List[tuple], summary: List[str],
+                 hourly: List[tuple] = None, goal_line: str = None) -> str:
+    """Отчёт одной страницей — то, что отправляют руководству.
+
+    HTML, а не PDF: страница открывается на любом устройстве и печатается в
+    PDF средствами браузера. Генерировать PDF на стороне дашборда значит
+    тянуть ещё одну библиотеку в облачную сборку ради формата, который
+    браузер и так умеет.
+    """
+    def esc(text):
+        return (str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+    kpi_html = "".join(
+        f'<div class="kpi"><div class="v">{esc(value)}</div>'
+        f'<div class="k">{esc(name)}</div></div>'
+        for name, value in kpis
+    )
+    summary_html = "".join(f"<li>{esc(fact)}</li>" for fact in summary) or "<li>Нет данных</li>"
+
+    hourly_html = ""
+    if hourly:
+        rows = "".join(
+            f"<tr><td>{esc(hour)}</td><td class='n'>{esc(count)}</td></tr>"
+            for hour, count in hourly
+        )
+        hourly_html = f"""<h2>По часам</h2>
+<table><tr><th>Час</th><th style="text-align:right">Входов</th></tr>{rows}</table>"""
+
+    goal_html = f"<h2>План и факт</h2><p>{esc(goal_line)}</p>" if goal_line else ""
+
+    return f"""<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<title>Посещаемость · {esc(store)} · {esc(period_label)}</title>
+<style>{REPORT_STYLE}</style></head><body>
+<h1>Посещаемость · {esc(store)}</h1>
+<div class="sub">{esc(period_label)} · отчёт составлен {generated_at:%d.%m.%Y %H:%M}</div>
+<div class="kpis">{kpi_html}</div>
+{goal_html}
+<h2>Главное</h2>
+<ul>{summary_html}</ul>
+{hourly_html}
+<div class="foot">Havas Pilot · подсчёт посетителей по видео.
+Проходы без опознания учитываются в посещаемости, но исключены из метрик
+уникальности — доля опознанных указана среди показателей выше.</div>
+</body></html>"""
