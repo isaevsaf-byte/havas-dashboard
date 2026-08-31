@@ -240,11 +240,27 @@ with hero_col:
         insights.forecast_day_total(df_period, df_30, now_local)
         if period_choice == "Сегодня" else None
     )
+    # «Проходов», а не «посетителей»: человек, вышедший покурить через
+    # входную дверь и вернувшийся, даёт два прохода. На точке таких выходов
+    # 44 при 234 входах — расхождение между цифрой и числом людей доходит до
+    # пятой части. Проходы реальны, но подпись не должна обещать большего.
+    # Возвраты опознаются по личности, а не по числу событий OUT: человек
+    # мог выйти и не вернуться, а неопознанный проход про себя ничего не
+    # говорит. Считаем только те входы, где тот же visitor_id вошёл вскоре
+    # после того, как вышел.
+    returns = insights.count_returns(df_period)
+    estimate = insights.visitors_estimate(total_in, returns)
+    hints = []
+    if forecast:
+        hints.append(f"Прогноз до конца дня: ~{forecast}")
+    if returns:
+        hints.append(f"из них {returns} — возвраты, разных людей ≈ {estimate['people']}")
+
     theme.hero_metric(
-        f"Входов · {period_choice.lower()}", str(total_in), palette,
+        f"Проходов внутрь · {period_choice.lower()}", str(total_in), palette,
         delta=f"{delta_pct:+.0f}% vs {period_label}" if delta_pct is not None else None,
         delta_positive=delta_pct is not None and delta_pct >= 0,
-        hint=f"Прогноз до конца дня: ~{forecast}" if forecast else None,
+        hint=" · ".join(hints) if hints else None,
     )
 
 with side_col:

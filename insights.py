@@ -276,3 +276,60 @@ def build_report(store: str, period_label: str, generated_at: datetime,
 Проходы без опознания учитываются в посещаемости, но исключены из метрик
 уникальности — доля опознанных указана среди показателей выше.</div>
 </body></html>"""
+
+
+RETURN_WINDOW_MIN = 45
+
+
+def count_returns(df: pd.DataFrame, window_min: int = RETURN_WINDOW_MIN) -> int:
+    """Сколько входов — это возвраты того же человека, а не новые посетители.
+
+    На точке, где вход и выход разные двери, событие OUT означает не уход из
+    магазина, а выход через входную дверь: покурить, к машине, передумал. За
+    таким выходом почти всегда следует вход того же человека, и в цифре
+    «проходов» он считается дважды.
+
+    Возврат опознаётся по личности: тот же visitor_id вошёл после того, как
+    вышел, в пределах окна. Неопознанные проходы (`unknown-`) не считаются
+    возвратами — про них ничего не известно, и записывать их в возвраты
+    значило бы занижать посещаемость наугад.
+
+    Число нужно не чтобы вычесть его молча, а чтобы показать рядом: «столько
+    проходов, из них столько повторных заходов». Разница между проходами и
+    людьми доходила на точке до пятой части.
+    """
+    if df.empty or "visitor_id" not in df:
+        return 0
+    known = df[~df["visitor_id"].astype(str).str.startswith("unknown-")]
+    if known.empty:
+        return 0
+
+    ordered = known.sort_values("timestamp")
+    returns = 0
+    for _, events in ordered.groupby("visitor_id"):
+        last_out = None
+        for _, row in events.iterrows():
+            if row["direction"] == "OUT":
+                last_out = row["timestamp"]
+            elif last_out is not None:
+                gap = (row["timestamp"] - last_out).total_seconds() / 60
+                if 0 <= gap <= window_min:
+                    returns += 1
+                last_out = None
+    return returns
+
+
+def visitors_estimate(entries_count: int, returns: int) -> dict:
+    """Проходы, возвраты и оценка числа людей.
+
+    Оценка, а не измерение: неопознанные проходы могли быть возвратами и
+    остаться неучтёнными, поэтому людей не больше названного, но может быть
+    меньше. Так и подписано.
+    """
+    people = max(entries_count - returns, 0)
+    return {
+        "passes": entries_count,
+        "returns": returns,
+        "people": people,
+        "share": returns / entries_count if entries_count else 0,
+    }
