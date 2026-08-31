@@ -249,12 +249,24 @@ with hero_col:
     # говорит. Считаем только те входы, где тот же visitor_id вошёл вскоре
     # после того, как вышел.
     returns = insights.count_returns(df_period)
-    estimate = insights.visitors_estimate(total_in, returns)
+    # Персонал отличается от покупателей не внешностью, а частотой: продавец
+    # проходит через дверь десятки раз за день, покупатель один-два. Этого
+    # достаточно, чтобы вычесть его из трафика без распознавания лиц —
+    # частота прохода не биометрия и не требует ни согласия, ни хранения
+    # данных внутри страны.
+    staff = insights.staff_candidates(df_period)
+    breakdown = insights.traffic_breakdown(total_in, returns, staff["passes"])
+
     hints = []
     if forecast:
         hints.append(f"Прогноз до конца дня: ~{forecast}")
-    if returns:
-        hints.append(f"из них {returns} — возвраты, разных людей ≈ {estimate['people']}")
+    if returns or staff["passes"]:
+        parts = []
+        if returns:
+            parts.append(f"{returns} возвратов")
+        if staff["passes"]:
+            parts.append(f"{staff['passes']} проходов персонала")
+        hints.append(f"из них {', '.join(parts)} · посетителей ≈ {breakdown['visitors']}")
 
     theme.hero_metric(
         f"Проходов внутрь · {period_choice.lower()}", str(total_in), palette,
@@ -262,6 +274,11 @@ with hero_col:
         delta_positive=delta_pct is not None and delta_pct >= 0,
         hint=" · ".join(hints) if hints else None,
     )
+
+    if breakdown["share_removed"] >= 0.1:
+        # Десятая часть и больше — уже не мелочь: показываем разбивку явно,
+        # иначе цифра «проходов» читается как «посетителей».
+        theme.traffic_note(breakdown, staff, palette)
 
 with side_col:
     k1, k2, k3 = st.columns(3)

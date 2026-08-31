@@ -148,6 +148,37 @@ def status_banner(icon: str, text: str, color: str, p: Palette) -> None:
     )
 
 
+def traffic_note(breakdown: dict, staff: dict, p: Palette) -> None:
+    """Из чего складывается число проходов.
+
+    Показывается разбивкой, а не вычитается молча: «посетителей» здесь —
+    оценка, в которую не попадает неопознанный персонал и может попасть
+    курьер. Читатель должен видеть, из чего она получена, чтобы понимать
+    её границы.
+    """
+    rows = [("Проходов внутрь", breakdown["passes"], p.text_primary)]
+    if breakdown["returns"]:
+        rows.append(("− возвраты того же человека", breakdown["returns"], p.text_secondary))
+    if breakdown["staff"]:
+        label = f"− персонал ({staff.get('people', 0)} чел.)"
+        rows.append((label, breakdown["staff"], p.text_secondary))
+    rows.append(("Посетителей, оценка", breakdown["visitors"], p.new))
+
+    html = [f'<div style="margin:2px 0 14px;font-size:13.5px">']
+    for i, (label, value, color) in enumerate(rows):
+        border = (f'border-top:1px solid {p.rgba(p.text_secondary, 0.2)};padding-top:5px;'
+                  if i == len(rows) - 1 else '')
+        weight = "600" if i in (0, len(rows) - 1) else "400"
+        html.append(
+            f'<div style="display:flex;justify-content:space-between;{border}'
+            f'margin-top:3px"><span style="color:{color};font-weight:{weight}">'
+            f'{escape(label)}</span><span style="color:{color};font-weight:{weight};'
+            f'font-variant-numeric:tabular-nums">{value}</span></div>'
+        )
+    html.append('</div>')
+    st.markdown("".join(html), unsafe_allow_html=True)
+
+
 def goal_bar(progress: dict, line: Optional[str], p: Palette) -> None:
     """План и факт одной полосой.
 

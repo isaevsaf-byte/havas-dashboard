@@ -333,3 +333,56 @@ def visitors_estimate(entries_count: int, returns: int) -> dict:
         "people": people,
         "share": returns / entries_count if entries_count else 0,
     }
+
+
+STAFF_MIN_PASSES = 5
+
+
+def staff_candidates(df: pd.DataFrame, min_passes: int = STAFF_MIN_PASSES) -> dict:
+    """Кто из опознанных похож на сотрудника, а не на покупателя.
+
+    Отличаются они не внешностью, а частотой: покупатель проходит через дверь
+    один-два раза за день, продавец — десятки. Этого достаточно, чтобы
+    вычесть персонал из трафика, не прибегая к распознаванию лиц: частота
+    прохода — не биометрия, согласия не требует и хранения в стране тоже.
+
+    🚨 Это оценка, а не факт. В неё не попадёт сотрудник, которого система
+    не опознала (у нас 8-16% проходов без личности), и может попасть
+    курьер, охранник или очень занятой покупатель. Поэтому число
+    показывается отдельной строкой, а не вычитается из трафика молча.
+    """
+    if df.empty or "visitor_id" not in df:
+        return {"ids": [], "passes": 0}
+
+    known = df[
+        (df["direction"] == "IN")
+        & ~df["visitor_id"].astype(str).str.startswith("unknown-")
+    ]
+    if known.empty:
+        return {"ids": [], "passes": 0}
+
+    counts = known.groupby("visitor_id").size()
+    staff = counts[counts >= min_passes]
+    return {
+        "ids": list(staff.index),
+        "passes": int(staff.sum()),
+        "people": len(staff),
+        "top": int(staff.max()) if len(staff) else 0,
+    }
+
+
+def traffic_breakdown(entries_count: int, returns: int, staff_passes: int) -> dict:
+    """Из чего складывается показываемое число проходов.
+
+    Три слоя, и каждый надо назвать отдельно: проходы (что измерено),
+    возвраты (тот же человек вошёл дважды), персонал (не покупатель вовсе).
+    Оценка посетителей — то, что остаётся, и она не может быть отрицательной.
+    """
+    visitors = max(entries_count - returns - staff_passes, 0)
+    return {
+        "passes": entries_count,
+        "returns": returns,
+        "staff": staff_passes,
+        "visitors": visitors,
+        "share_removed": (returns + staff_passes) / entries_count if entries_count else 0,
+    }
