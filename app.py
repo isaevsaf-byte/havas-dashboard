@@ -611,7 +611,12 @@ if period_choice in ("Сегодня", "Вчера") and not df_period.empty:
     with st.expander(f"📋 Живая лента ({period_choice.lower()})"):
         table = df_period.head(15).copy()
         dir_colors = {"IN": palette.in_, "OUT": palette.out}
-        dir_labels = {"IN": "Вошёл", "OUT": "Вышел"}
+        # «Вернулся», а не «Вышел»: камера стоит над входом, а уходят из
+        # магазина через другую дверь. Событие OUT здесь означает, что человек
+        # вышел через входную дверь — покурить, передумал, — и почти всегда
+        # вернётся. Подпись «Вышел» читалась бы как уход из магазина и врала.
+        exit_seen = getattr(config, "EXIT_IN_FRAME", True)
+        dir_labels = {"IN": "Вошёл", "OUT": "Вышел" if exit_seen else "Через вход наружу"}
         rows_html = [f'<div style="background:{palette.surface};border:1px solid {palette.border};'
                      f'border-radius:10px;overflow:hidden">']
         for i, (_, row) in enumerate(table.iterrows()):

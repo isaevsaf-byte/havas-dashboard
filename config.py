@@ -22,3 +22,8 @@ STORE_NAME = os.getenv("STORE_NAME", "havas_tashkent")
 UNKNOWN_VISITOR_PREFIX = "unknown-"
 
 DASHBOARD_REFRESH_SEC = 30
+
+# Видит ли камера, как люди уходят из магазина. На havas_tashkent — нет:
+# вход и выход разные двери. События OUT там означают возврат через входную
+# дверь, а не уход, и подписывать их «Вышел» значит вводить в заблуждение.
+EXIT_IN_FRAME = os.getenv("EXIT_IN_FRAME", "") == "1"
