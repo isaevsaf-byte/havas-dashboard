@@ -386,3 +386,28 @@ def traffic_breakdown(entries_count: int, returns: int, staff_passes: int) -> di
         "visitors": visitors,
         "share_removed": (returns + staff_passes) / entries_count if entries_count else 0,
     }
+
+
+def method_break_note(period_start, period_end, breaks) -> Optional[str]:
+    """Предупреждение, если период сравнения пересекает смену методики.
+
+    04.09.2026 в 13:10 включено правило поздних треков, и входов стало
+    считаться примерно втрое больше — не потому, что пришло больше людей, а
+    потому, что система перестала их терять. Сравнение «сегодня против вчера»
+    через эту границу показывает +200% и читается как всплеск трафика.
+    Цифра при этом верна; неверно сравнение, и об этом надо сказать.
+    """
+    for stamp, reason in breaks or []:
+        moment = datetime.strptime(stamp, "%Y-%m-%d %H:%M")
+        if period_start.tzinfo is not None and moment.tzinfo is None:
+            moment = moment.replace(tzinfo=period_start.tzinfo)
+        if period_start < moment <= period_end:
+            return (f"С {moment:%d.%m %H:%M} {reason}. Сравнивать цифры до и после "
+                    f"этого момента нельзя.")
+        # Граница до периода, но период сравнивается с предыдущим — тоже ловушка.
+    return None
+
+
+def method_break_between(prev_start, period_end, breaks) -> Optional[str]:
+    """То же, но для пары «текущий период против предыдущего»."""
+    return method_break_note(prev_start, period_end, breaks)

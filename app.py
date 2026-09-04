@@ -222,6 +222,16 @@ summary_facts = insights.build_summary(
 )
 theme.summary_block(summary_facts, palette)
 
+# --- Смена методики ----------------------------------------------------------
+# Если в период или в его сравнение с предыдущим попала смена методики,
+# цифры верны, а сравнение — нет. Без предупреждения +200% читается как
+# всплеск трафика, хотя это починка подсчёта.
+break_note = insights.method_break_between(
+    prev_start, period_end, getattr(config, "COUNTING_METHOD_BREAKS", []),
+)
+if break_note:
+    theme.status_banner("ⓘ", break_note, palette.warning, palette)
+
 # --- KPI -------------------------------------------------------------------
 total_in = len(df_in)
 identified_in = df_in[is_identified(df_in["visitor_id"])] if total_in else df_in
